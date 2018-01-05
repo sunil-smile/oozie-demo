@@ -1,0 +1,135 @@
+<workflow-app xmlns="uri:oozie:workflow:0.2" name="demo-wf">
+
+    <start to="cleanup-node"/>
+
+    <action name="cleanup-node">
+        <fs>
+            <delete path="${nameNode}/tmp/simplyanalytics/oozie_example/"/>
+        </fs>
+        <ok to="fork-node"/>
+        <error to="fail"/>
+    </action>
+
+    <fork name="fork-node">
+        <path start="pig-node"/>
+        <path start="mr-node"/>
+    </fork>
+
+    <action name="pig-node">
+        <pig>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${nameNode}/tmp/simplyanalytics/oozie_example/pig_output/"/>
+            </prepare>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+                <property>
+                    <name>mapred.map.output.compress</name>
+                    <value>false</value>
+                </property>
+            </configuration>
+            <script>word_count.pig</script>
+            <param>INPUT=/tmp/simplyanalytics/input/wordcount.txt</param>
+            <param>OUTPUT=/tmp/simplyanalytics/oozie_example/pig_output/</param>
+        </pig>
+        <ok to="join-node"/>
+        <error to="fail"/>
+    </action>
+
+    <action name="mr-node">
+        <map-reduce>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${nameNode}/tmp/simplyanalytics/oozie_example/mr_output/"/>
+            </prepare>
+		<configuration>
+                                <property>
+                                        <name>mapred.mapper.new-api</name>
+                                        <value>true</value>
+                                </property>
+                                <property>
+                                        <name>mapred.reducer.new-api</name>
+                                        <value>true</value>
+                                </property>
+                                <property>
+                                        <name>mapred.job.queue.name</name>
+                                        <value>${queueName}</value>
+                                </property>
+                                <property>
+                                        <name>mapreduce.map.class</name>
+                                        <value>com.sunilapp.wordcount.WordCountMapper</value>
+                                </property>
+                                <property>
+                                        <name>mapreduce.reduce.class</name>
+                                        <value>com.sunilapp.wordcount.WordCountReducer</value>
+                                </property>
+                                <property>
+                                        <name>mapred.mapoutput.key.class</name>
+                                        <value>org.apache.hadoop.io.Text</value>
+                                </property>
+                                <property>
+                                        <name>mapred.mapoutput.value.class</name>
+                                        <value>org.apache.hadoop.io.IntWritable</value>
+                                </property>
+                                <property>
+                                        <name>mapred.output.key.class</name>
+                                        <value>org.apache.hadoop.io.Text</value>
+                                </property>
+                                <property>
+                                        <name>mapred.output.value.class</name>
+                                        <value>org.apache.hadoop.io.IntWritable</value>
+                                </property>
+                                <property>
+                                        <name>mapred.input.dir</name>
+                                        <value>/tmp/simplyanalytics/input/wordcount.txt</value>
+                                </property>
+                                <property>
+                                        <name>mapred.output.dir</name>
+                                        <value>/tmp/simplyanalytics/oozie_example/mr_output/</value>
+                                </property>
+                                <property>
+                                        <name>mapreduce.job.acl-view-job</name>
+                                        <value>*</value>
+                                </property>
+                                <property>
+                                        <name>oozie.launcher.mapreduce.job.acl-view-job</name>
+                                        <value>*</value>
+                                </property>
+ </configuration>
+            
+        </map-reduce>
+        <ok to="join-node"/>
+        <error to="fail"/>
+    </action>
+    
+    <join name="join-node" to="decision-node"/>
+    
+    
+    <decision name="decision-node">
+        <switch>
+            <case to="hdfs-node">${fs:exists('/tmp/simplyanalytics/oozie_example/mr_output/') == "true"}</case>
+            <default to="end"/>
+        </switch>
+    </decision>
+
+    <action name="hdfs-node">
+        <fs>
+            <move source="${nameNode}/tmp/simplyanalytics/oozie_example/mr_output/"
+                  target="${nameNode}/tmp/simplyanalytics/oozie_example/mr_output_final/"/>
+        </fs>
+        <ok to="end"/>
+        <error to="fail"/>
+    </action>
+
+    <kill name="fail">
+        <message>Demo workflow failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+
+    <end name="end"/>
+
+</workflow-app>
